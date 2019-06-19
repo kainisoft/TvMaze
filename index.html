@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>TvMaze Search</title>
+    <style type="text/css">
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        .wrapper {
+            margin: 20px auto;
+            width: 70%;
+        }
+        #searchInput {
+            height: 30px;
+            text-indent: 10px;
+            margin-right: 13px;
+            width: 300px;
+            border: 1px solid #b6b6b6;
+        }
+        #searchBtn {
+            height: 30px;
+            padding: 0 20px;
+            cursor: pointer;
+            background-color: #9f9f9f;
+            border: navajowhite;
+        }
+        #searchBtn:hover {
+            background-color: #b5b5b5;
+        }
+        #tvList {
+            padding: 20px;
+            width: 100%;
+        }
+        #tvList {
+            padding: 10px 0;
+        }
+        #paging {
+            list-style-type: none;
+        }
+        #paging li {
+            display: inline-block;
+            padding: 20px;
+            cursor: pointer;
+            background-color: #b5b5b5;
+            margin: 10px;
+        }
+        #paging li:hover {
+            background-color: #878686;
+        }
+        .even {
+            background-color: gainsboro;
+        }
+        .odd {
+            background-color: #bcbcbc;
+        }
+        .name-cell {
+            text-align: center;
+            padding: 10px 0;
+        }
+        .cast-table {
+            width: 100%;
+        }
+        .cast-table td {
+            padding: 10px;
+        }
+        .empty-cast {
+            text-align: center;
+        }
+        img.loading {
+            width: 100px;
+        }
+        .id-cell {
+            width: 100px;
+        }
+        .cast-name-cell {
+            text-align: left;
+            width: 300px;
+        }
+        .birthday-cell {
+            width: 200px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="wrapper">
+        <input id="searchInput" type="search">
+        <button id="searchBtn">Search</button>
+        <ul id="paging"></ul>
+        <table id="tvList"></table>
+    </main>
+<script>
+  (function (scope) {
+    'use strict';
+
+    // Consts
+    var PER_PAGE = 3;
+
+    var $ = function (selector) {
+      return scope.document.querySelector(selector);
+    };
+    var api = {
+      apiEndPoint: 'http://api.tvmaze.com/',
+      fetch(endpoint) {
+        return new Promise(function(resolve, reject) {
+          scope.fetch(endpoint)
+            .then(function(response) {
+              if (response.status !== 200) {
+                console.error('Looks like there was a problem. Status Code: ' + response.status);
+
+                return reject(response);
+              }
+
+              response.json()
+                .then(resolve)
+                .catch(reject);
+            })
+            .catch(function(err) {
+              console.log('Fetch Error :-S', err);
+              reject(err);
+            });
+        });
+      },
+      fetchSearchList(searchValue) {
+        return this.fetch(this.apiEndPoint + 'search/shows?q=' + searchValue);
+      },
+      fetchCast(id) {
+        return this.fetch(this.apiEndPoint + 'shows/' + id + '/cast');
+      }
+    };
+
+    var searchBtn = $('#searchBtn');
+    var searchInput = $('#searchInput');
+    var searchResult = [];
+    var tvList = $('#tvList');
+    var paging = $('#paging');
+
+    searchBtn.addEventListener('click', function() {
+      var searchValue = searchInput.value.trim();
+
+      if (!searchValue) {
+        alert('Please, enter search criteria!');
+        searchInput.focus();
+
+        return;
+      }
+
+      reset();
+
+      api.fetchSearchList(searchValue).then(prepareAndRenderList);
+    });
+
+    paging.addEventListener('click', function (event) {
+      var page = event.target.getAttribute('data-page');
+      var offset = (parseInt(page, 10) - 1) * PER_PAGE;
+
+      buildSearchResultList(searchResult.slice(offset, offset + PER_PAGE));
+    });
+
+    function reset () {
+      tvList.innerHTML = '<tr><td>Loading...</td></tr>';
+      paging.innerHTML = '';
+      searchResult = [];
+    }
+
+    function prepareAndRenderList (list) {
+      searchResult = list;
+
+      buildPaging();
+      buildSearchResultList(searchResult.slice(0, PER_PAGE));
+    }
+
+    function buildPaging () {
+      var pages = Math.ceil(searchResult.length / PER_PAGE);
+
+      for (var i = 1; i <= pages; i++) {
+        var li = scope.document.createElement('li');
+
+        li.setAttribute('data-page', String(i));
+        li.appendChild(
+          scope.document.createTextNode(String(i))
+        );
+
+        paging.appendChild(li);
+      }
+    }
+
+    function buildSearchResultList (list) {
+      tvList.innerHTML = '';
+
+      if (!Array.isArray(list) || !list.length) {
+        tvList.innerHTML = '<tr><td>Sorry, search result is empty!</td></tr>';
+
+        return;
+      }
+
+      list.forEach(function(item, index) {
+        buildSearchResultItem(item, index);
+      });
+    }
+
+    function buildSearchResultItem (item, index) {
+      var row = tvList.insertRow();
+
+      row.classList.add(index % 2 ? 'odd' : 'even');
+
+      var nameCell = row.insertCell();
+
+      nameCell.classList.add('name-cell');
+      nameCell.appendChild(
+        scope.document.createTextNode(item.show.name)
+      );
+
+      var castCell = row.insertCell();
+      var img = scope.document.createElement('img');
+
+      img.setAttribute('src', './giphy.gif');
+      img.classList.add('loading');
+      castCell.appendChild(img);
+
+      buildCastCell(castCell, item.show.id);
+    }
+
+    function buildCastCell(castCell, id) {
+      api.fetchCast(id).then(function (list) {
+        castCell.innerHTML = '';
+
+        if (!Array.isArray(list) || !list.length) {
+          castCell.innerHTML = 'Cast list is empty!';
+          castCell.classList.add('empty-cast');
+
+          return;
+        }
+
+        var table = scope.document.createElement('table');
+
+        buildCastHeader(table);
+
+        list.sort(function (itemA, itemB) {
+          if (!itemA.person.birthday) {
+            return 1;
+          } else if(!itemB.person.birthday) {
+            return -1;
+          } else {
+            var dateA = new Date(itemA.person.birthday);
+            var dateB = new Date(itemB.person.birthday);
+
+            return dateB.getTime() - dateA.getTime();
+          }
+        });
+
+        list.forEach(function (item) {
+          buildCastItem(table, item);
+        });
+
+        castCell.appendChild(table);
+      });
+    }
+
+    function buildCastHeader (table) {
+      table.classList.add('cast-table');
+
+      var row = table.insertRow()
+
+      var idCell = row.insertCell()
+      idCell.appendChild(scope.document.createTextNode('ID'));
+      idCell.classList.add('id-cell');
+
+      var nameCell = row.insertCell()
+      nameCell.appendChild(scope.document.createTextNode('Name'));
+      nameCell.classList.add('cast-name-cell');
+
+      var birthdayCell = row.insertCell()
+      birthdayCell.appendChild(scope.document.createTextNode('Birthday'));
+      birthdayCell.classList.add('birthday-cell');
+    }
+
+    function buildCastItem (table, item) {
+      var row = table.insertRow()
+      var idCell = row.insertCell();
+
+      idCell.appendChild(
+        scope.document.createTextNode(item.person.id)
+      );
+
+      row.insertCell().appendChild(
+        scope.document.createTextNode(item.person.name)
+      );
+
+      row.insertCell().appendChild(
+        scope.document.createTextNode(item.person.birthday || '')
+      );
+    }
+
+  }(window));
+</script>
+</body>
+</html>
